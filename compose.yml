@@ -6,7 +6,7 @@ services:
     image: docker.io/mongo
     restart: always
     volumes:
-      - ./data/db:/data/db
+      - mongodb_data:/data/db
     healthcheck:
       test: echo 'db.runCommand("ping").ok' | mongosh localhost:27017/test --quiet
       interval: 10s
@@ -18,16 +18,18 @@ services:
   redis:
     image: docker.io/eqalpha/keydb
     restart: always
+    volumes:
+      - redis_data:/data
 
   # RabbitMQ: Internal message broker
   rabbit:
     image: docker.io/rabbitmq:4
     restart: always
     environment:
-      RABBITMQ_DEFAULT_USER: rabbituser
-      RABBITMQ_DEFAULT_PASS: rabbitpass
+      RABBITMQ_DEFAULT_USER: ${RABBIT_USER:-rabbituser}
+      RABBITMQ_DEFAULT_PASS: ${RABBIT_PASS:-rabbitpass}
     volumes:
-      - ./data/rabbit:/var/lib/rabbitmq
+      - rabbit_data:/var/lib/rabbitmq
     healthcheck:
       test: rabbitmq-diagnostics -q ping
       interval: 10s
@@ -40,16 +42,15 @@ services:
     image: docker.io/minio/minio
     command: server /data
     volumes:
-      - ./data/minio:/data
+      - minio_data:/data
     environment:
-      MINIO_ROOT_USER: minioautumn
-      MINIO_ROOT_PASSWORD: minioautumn
+      MINIO_ROOT_USER: ${MINIO_USER:-minioautumn}
+      MINIO_ROOT_PASSWORD: ${MINIO_PASS:-minioautumn}
       MINIO_DOMAIN: minio
     networks:
       default:
         aliases:
           - revolt-uploads.minio
-          # legacy support:
           - attachments.minio
           - avatars.minio
           - backgrounds.minio
@@ -62,14 +63,15 @@ services:
   caddy:
     image: docker.io/caddy
     restart: always
-    env_file: .env.web
-    ports:
-      - "80:80"
-      - "443:443"
+    environment:
+      PORT: ${PORT:-80}
+      HOSTNAME: ${RAILWAY_PUBLIC_DOMAIN:-localhost}
     volumes:
       - ./Caddyfile:/etc/caddy/Caddyfile
-      - ./data/caddy-data:/data
-      - ./data/caddy-config:/config
+      - caddy_data:/data
+      - caddy_config:/config
+    ports:
+      - "${PORT:-80}:${PORT:-80}"
 
   # API server
   api:
@@ -81,10 +83,20 @@ services:
         condition: service_started
       rabbit:
         condition: service_healthy
+    environment:
+      - REVOLT_DATABASE_MONGODB=mongodb://database
+      - REVOLT_DATABASE_REDIS=redis://redis/
+      - REVOLT_RABBIT_HOST=rabbit
+      - REVOLT_RABBIT_USERNAME=${RABBIT_USER:-rabbituser}
+      - REVOLT_RABBIT_PASSWORD=${RABBIT_PASS:-rabbitpass}
+      - REVOLT_HOSTS_APP=https://${RAILWAY_PUBLIC_DOMAIN:-localhost}
+      - REVOLT_HOSTS_API=https://${RAILWAY_PUBLIC_DOMAIN:-localhost}/api
+      - REVOLT_HOSTS_EVENTS=wss://${RAILWAY_PUBLIC_DOMAIN:-localhost}/ws
+      - REVOLT_HOSTS_AUTUMN=https://${RAILWAY_PUBLIC_DOMAIN:-localhost}/autumn
+      - REVOLT_HOSTS_JANUARY=https://${RAILWAY_PUBLIC_DOMAIN:-localhost}/january
+      - REVOLT_FILES_ENCRYPTION_KEY=${FILES_ENCRYPTION_KEY:-qcuMA+ssxhMyKaNAKBGFfryfFtUH8NDlamQyDwGW6fU=}
     volumes:
-      - type: bind
-        source: ./Revolt.toml
-        target: /Revolt.toml
+      - ./Revolt.toml:/Revolt.toml
     restart: always
 
   # Events service
@@ -95,17 +107,27 @@ services:
         condition: service_healthy
       redis:
         condition: service_started
+    environment:
+      - REVOLT_DATABASE_MONGODB=mongodb://database
+      - REVOLT_DATABASE_REDIS=redis://redis/
+      - REVOLT_HOSTS_APP=https://${RAILWAY_PUBLIC_DOMAIN:-localhost}
+      - REVOLT_HOSTS_API=https://${RAILWAY_PUBLIC_DOMAIN:-localhost}/api
+      - REVOLT_HOSTS_EVENTS=wss://${RAILWAY_PUBLIC_DOMAIN:-localhost}/ws
+      - REVOLT_HOSTS_AUTUMN=https://${RAILWAY_PUBLIC_DOMAIN:-localhost}/autumn
+      - REVOLT_HOSTS_JANUARY=https://${RAILWAY_PUBLIC_DOMAIN:-localhost}/january
     volumes:
-      - type: bind
-        source: ./Revolt.toml
-        target: /Revolt.toml
+      - ./Revolt.toml:/Revolt.toml
     restart: always
 
   # Web App
   web:
     image: ghcr.io/revoltchat/client:master
     restart: always
-    env_file: .env.web
+    environment:
+      - HOSTNAME=https://${RAILWAY_PUBLIC_DOMAIN:-localhost}
+      - REVOLT_PUBLIC_URL=https://${RAILWAY_PUBLIC_DOMAIN:-localhost}/api
+    depends_on:
+      - api
 
   # File server
   autumn:
@@ -115,28 +137,44 @@ services:
         condition: service_healthy
       createbuckets:
         condition: service_started
+    environment:
+      - REVOLT_DATABASE_MONGODB=mongodb://database
+      - REVOLT_FILES_S3_ENDPOINT=http://minio:9000
+      - REVOLT_FILES_S3_ACCESS_KEY_ID=${MINIO_USER:-minioautumn}
+      - REVOLT_FILES_S3_SECRET_ACCESS_KEY=${MINIO_PASS:-minioautumn}
+      - REVOLT_HOSTS_APP=https://${RAILWAY_PUBLIC_DOMAIN:-localhost}
+      - REVOLT_HOSTS_API=https://${RAILWAY_PUBLIC_DOMAIN:-localhost}/api
+      - REVOLT_HOSTS_EVENTS=wss://${RAILWAY_PUBLIC_DOMAIN:-localhost}/ws
+      - REVOLT_HOSTS_AUTUMN=https://${RAILWAY_PUBLIC_DOMAIN:-localhost}/autumn
+      - REVOLT_HOSTS_JANUARY=https://${RAILWAY_PUBLIC_DOMAIN:-localhost}/january
     volumes:
-      - type: bind
-        source: ./Revolt.toml
-        target: /Revolt.toml
+      - ./Revolt.toml:/Revolt.toml
     restart: always
 
   # Metadata and image proxy
   january:
     image: ghcr.io/revoltchat/january:20250930-2
+    environment:
+      - REVOLT_HOSTS_APP=https://${RAILWAY_PUBLIC_DOMAIN:-localhost}
+      - REVOLT_HOSTS_API=https://${RAILWAY_PUBLIC_DOMAIN:-localhost}/api
+      - REVOLT_HOSTS_EVENTS=wss://${RAILWAY_PUBLIC_DOMAIN:-localhost}/ws
+      - REVOLT_HOSTS_AUTUMN=https://${RAILWAY_PUBLIC_DOMAIN:-localhost}/autumn
+      - REVOLT_HOSTS_JANUARY=https://${RAILWAY_PUBLIC_DOMAIN:-localhost}/january
     volumes:
-      - type: bind
-        source: ./Revolt.toml
-        target: /Revolt.toml
+      - ./Revolt.toml:/Revolt.toml
     restart: always
 
   # Tenor proxy
   gifbox:
     image: ghcr.io/revoltchat/gifbox:20250930-2
+    environment:
+      - REVOLT_HOSTS_APP=https://${RAILWAY_PUBLIC_DOMAIN:-localhost}
+      - REVOLT_HOSTS_API=https://${RAILWAY_PUBLIC_DOMAIN:-localhost}/api
+      - REVOLT_HOSTS_EVENTS=wss://${RAILWAY_PUBLIC_DOMAIN:-localhost}/ws
+      - REVOLT_HOSTS_AUTUMN=https://${RAILWAY_PUBLIC_DOMAIN:-localhost}/autumn
+      - REVOLT_HOSTS_JANUARY=https://${RAILWAY_PUBLIC_DOMAIN:-localhost}/january
     volumes:
-      - type: bind
-        source: ./Revolt.toml
-        target: /Revolt.toml
+      - ./Revolt.toml:/Revolt.toml
     restart: always
 
   # Regular task daemon
@@ -147,10 +185,13 @@ services:
         condition: service_healthy
       minio:
         condition: service_started
+    environment:
+      - REVOLT_DATABASE_MONGODB=mongodb://database
+      - REVOLT_FILES_S3_ENDPOINT=http://minio:9000
+      - REVOLT_FILES_S3_ACCESS_KEY_ID=${MINIO_USER:-minioautumn}
+      - REVOLT_FILES_S3_SECRET_ACCESS_KEY=${MINIO_PASS:-minioautumn}
     volumes:
-      - type: bind
-        source: ./Revolt.toml
-        target: /Revolt.toml
+      - ./Revolt.toml:/Revolt.toml
     restart: always
 
   # Push notification daemon
@@ -163,10 +204,16 @@ services:
         condition: service_started
       rabbit:
         condition: service_healthy
+    environment:
+      - REVOLT_DATABASE_MONGODB=mongodb://database
+      - REVOLT_DATABASE_REDIS=redis://redis/
+      - REVOLT_RABBIT_HOST=rabbit
+      - REVOLT_RABBIT_USERNAME=${RABBIT_USER:-rabbituser}
+      - REVOLT_RABBIT_PASSWORD=${RABBIT_PASS:-rabbitpass}
+      - REVOLT_PUSHD_VAPID_PRIVATE_KEY=${VAPID_PRIVATE_KEY:-LS0tLS1CRUdJTiBFQyBQUklWQVRFIEtFWS0tLS0tCk1IY0NBUUVFSUJSUWpyTWxLRnBiVWhsUHpUbERvcEliYk1yeVNrNXpKYzVYVzIxSjJDS3hvQW9HQ0NxR1NNNDkKQXdFSG9VUURRZ0FFWnkrQkg2TGJQZ2hEa3pEempXOG0rUXVPM3pCajRXT1phdkR6ZU00c0pqbmFwd1psTFE0WAp1ZDh2TzVodU94QWhMQlU3WWRldVovWHlBdFpWZmNyQi9BPT0KLS0tLS1FTkQgRUMgUFJJVkFURSBLRVktLS0tLQo=}
+      - REVOLT_PUSHD_VAPID_PUBLIC_KEY=${VAPID_PUBLIC_KEY:-BGcvgR-i2z4IQ5Mw841vJvkLjt8wY-FjmWrw83jOLCY52qcGZS0OF7nfLzuYbjsQISwVO2HXrmf18gLWVX3Kwfw=}
     volumes:
-      - type: bind
-        source: ./Revolt.toml
-        target: /Revolt.toml
+      - ./Revolt.toml:/Revolt.toml
     restart: always
 
   # Create buckets for minio.
@@ -177,9 +224,17 @@ services:
     entrypoint: >
       /bin/sh -c "
       while ! /usr/bin/mc ready minio; do
-        /usr/bin/mc alias set minio http://minio:9000 minioautumn minioautumn;
+        /usr/bin/mc alias set minio http://minio:9000 ${MINIO_USER:-minioautumn} ${MINIO_PASS:-minioautumn};
         echo 'Waiting minio...' && sleep 1;
       done;
       /usr/bin/mc mb minio/revolt-uploads;
       exit 0;
       "
+
+volumes:
+  mongodb_data:
+  redis_data:
+  rabbit_data:
+  minio_data:
+  caddy_data:
+  caddy_config:

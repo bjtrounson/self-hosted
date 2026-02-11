@@ -1,10 +1,11 @@
-{$HOSTNAME} {
+:{$PORT} {
 	route /api* {
 		uri strip_prefix /api
 		reverse_proxy http://api:14702 {
 			header_down Location "^/" "/api/"
 		}
 	}
+
 
 	route /ws {
 		uri strip_prefix /ws

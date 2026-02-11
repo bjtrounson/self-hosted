@@ -2,6 +2,7 @@ data*
 
 .env
 .env.web
-Revolt.toml
+# Revolt.toml (now included for Railway defaults)
 
 compose.override.yml
+
