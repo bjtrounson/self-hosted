@@ -1,11 +1,11 @@
 services:
-  # Configurator: Generates Revolt.toml
+  # Configurator: Generates Revolt.toml into a shared volume
   configurator:
     image: alpine:latest
     volumes:
-      - ./generate_revolt_toml.sh:/scripts/generate_revolt_toml.sh:ro
       - revolt_config:/config
     environment:
+
       - RAILWAY_PUBLIC_DOMAIN=${RAILWAY_PUBLIC_DOMAIN:-localhost}
       - VAPID_PRIVATE_KEY=${VAPID_PRIVATE_KEY}
       - VAPID_PUBLIC_KEY=${VAPID_PUBLIC_KEY}
@@ -15,11 +15,59 @@ services:
       - MINIO_USER=${MINIO_USER:-minioautumn}
       - MINIO_PASS=${MINIO_PASS:-minioautumn}
     user: root
-    entrypoint: >
-      /bin/sh -c "
-      apk add --no-progress openssl;
-      /bin/sh /scripts/generate_revolt_toml.sh;
-      "
+    entrypoint:
+      - /bin/sh
+      - -c
+      - |
+        apk add --no-progress openssl
+        CONFIG_FILE="/config/Revolt.toml"
+        if [ -f "$CONFIG_FILE" ]; then
+            echo "Configuration already exists. Skipping."
+            exit 0
+        fi
+        DOMAIN=${RAILWAY_PUBLIC_DOMAIN:-localhost}
+        PROTO="https"
+        if [ "$DOMAIN" = "localhost" ]; then PROTO="http"; fi
+        
+        if [ -z "$VAPID_PRIVATE_KEY" ] || [ -z "$VAPID_PUBLIC_KEY" ]; then
+            openssl ecparam -name prime256v1 -genkey -noout -out /tmp/priv.pem
+            VAPID_PRIVATE_KEY=$(cat /tmp/priv.pem | base64 | tr -d '\n')
+            VAPID_PUBLIC_KEY=$(openssl ec -in /tmp/priv.pem -pubout -outform DER 2>/dev/null | tail -c 65 | base64 | tr -d '\n')
+        fi
+        if [ -z "$FILES_ENCRYPTION_KEY" ]; then
+            FILES_ENCRYPTION_KEY=$(openssl rand -base64 32)
+        fi
+
+        cat <<EOF > "$CONFIG_FILE"
+        production = true
+        [database]
+        mongodb = "mongodb://database"
+        redis = "redis://redis/"
+        [hosts]
+        app = "$PROTO://$DOMAIN"
+        api = "$PROTO://$DOMAIN/api"
+        events = "ws${PROTO#http}://$DOMAIN/ws"
+        autumn = "$PROTO://$DOMAIN/autumn"
+        january = "$PROTO://$DOMAIN/january"
+        [rabbit]
+        host = "rabbit"
+        port = 5672
+        username = "${RABBIT_USER:-rabbituser}"
+        password = "${RABBIT_PASS:-rabbitpass}"
+        [pushd.vapid]
+        private_key = "$VAPID_PRIVATE_KEY"
+        public_key = "$VAPID_PUBLIC_KEY"
+        [files]
+        encryption_key = "$FILES_ENCRYPTION_KEY"
+        [files.s3]
+        endpoint = "http://minio:9000"
+        path_style_buckets = false
+        region = "minio"
+        access_key_id = "${MINIO_USER:-minioautumn}"
+        secret_access_key = "${MINIO_PASS:-minioautumn}"
+        default_bucket = "revolt-uploads"
+        EOF
+        echo "Revolt.toml generated."
 
   # MongoDB: Database
   database:
@@ -85,12 +133,51 @@ services:
     restart: always
     environment:
       PORT: ${PORT:-80}
-      HOSTNAME: ${RAILWAY_PUBLIC_DOMAIN:-localhost}
+    entrypoint:
+      - /bin/sh
+      - -c
+      - |
+        cat <<EOF > /etc/caddy/Caddyfile
+        :{\$PORT} {
+          route /api* {
+            uri strip_prefix /api
+            reverse_proxy http://api:14702 {
+              header_down Location "^/" "/api/"
+            }
+          }
+          route /ws {
+            uri strip_prefix /ws
+            reverse_proxy http://events:14703 {
+              header_down Location "^/" "/ws/"
+            }
+          }
+          route /autumn* {
+            uri strip_prefix /autumn
+            reverse_proxy http://autumn:14704 {
+              header_down Location "^/" "/autumn/"
+            }
+          }
+          route /january* {
+            uri strip_prefix /january
+            reverse_proxy http://january:14705 {
+              header_down Location "^/" "/january/"
+            }
+          }
+          route /gifbox* {
+            uri strip_prefix /gifbox
+            reverse_proxy http://gifbox:14706 {
+              header_down Location "^/" "/gifbox/"
+            }
+          }
+          reverse_proxy http://web:5000
+        }
+        EOF
+        caddy run --config /etc/caddy/Caddyfile --adapter caddyfile
     volumes:
-      - ./Caddyfile:/etc/caddy/Caddyfile
       - caddy_data:/data
       - caddy_config:/config
     ports:
+
       - "${PORT:-80}:${PORT:-80}"
 
   # API server
@@ -105,12 +192,6 @@ services:
         condition: service_healthy
       configurator:
         condition: service_completed_successfully
-    environment:
-      - REVOLT_DATABASE_MONGODB=mongodb://database
-      - REVOLT_DATABASE_REDIS=redis://redis/
-      - REVOLT_RABBIT_HOST=rabbit
-      - REVOLT_RABBIT_USERNAME=${RABBIT_USER:-rabbituser}
-      - REVOLT_RABBIT_PASSWORD=${RABBIT_PASS:-rabbitpass}
     volumes:
       - revolt_config:/etc/revolt
     command: ["--config", "/etc/revolt/Revolt.toml"]
@@ -126,9 +207,6 @@ services:
         condition: service_started
       configurator:
         condition: service_completed_successfully
-    environment:
-      - REVOLT_DATABASE_MONGODB=mongodb://database
-      - REVOLT_DATABASE_REDIS=redis://redis/
     volumes:
       - revolt_config:/etc/revolt
     command: ["--config", "/etc/revolt/Revolt.toml"]
@@ -154,11 +232,6 @@ services:
         condition: service_started
       configurator:
         condition: service_completed_successfully
-    environment:
-      - REVOLT_DATABASE_MONGODB=mongodb://database
-      - REVOLT_FILES_S3_ENDPOINT=http://minio:9000
-      - REVOLT_FILES_S3_ACCESS_KEY_ID=${MINIO_USER:-minioautumn}
-      - REVOLT_FILES_S3_SECRET_ACCESS_KEY=${MINIO_PASS:-minioautumn}
     volumes:
       - revolt_config:/etc/revolt
     command: ["--config", "/etc/revolt/Revolt.toml"]
@@ -196,11 +269,6 @@ services:
         condition: service_started
       configurator:
         condition: service_completed_successfully
-    environment:
-      - REVOLT_DATABASE_MONGODB=mongodb://database
-      - REVOLT_FILES_S3_ENDPOINT=http://minio:9000
-      - REVOLT_FILES_S3_ACCESS_KEY_ID=${MINIO_USER:-minioautumn}
-      - REVOLT_FILES_S3_SECRET_ACCESS_KEY=${MINIO_PASS:-minioautumn}
     volumes:
       - revolt_config:/etc/revolt
     command: ["--config", "/etc/revolt/Revolt.toml"]
@@ -218,12 +286,6 @@ services:
         condition: service_healthy
       configurator:
         condition: service_completed_successfully
-    environment:
-      - REVOLT_DATABASE_MONGODB=mongodb://database
-      - REVOLT_DATABASE_REDIS=redis://redis/
-      - REVOLT_RABBIT_HOST=rabbit
-      - REVOLT_RABBIT_USERNAME=${RABBIT_USER:-rabbituser}
-      - REVOLT_RABBIT_PASSWORD=${RABBIT_PASS:-rabbitpass}
     volumes:
       - revolt_config:/etc/revolt
     command: ["--config", "/etc/revolt/Revolt.toml"]
