@@ -1,0 +1,12 @@
+# Configuration for Revolt
+# This file can be used to override settings.
+# Most settings are provided via environment variables in compose.yml.
+
+[database]
+mongodb = "mongodb://database"
+redis = "redis://redis/"
+
+[rabbit]
+host = "rabbit"
+username = "rabbituser"
+password = "rabbitpass"
