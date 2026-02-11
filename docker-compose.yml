@@ -1,6 +1,26 @@
-name: stoat
-
 services:
+  # Configurator: Generates Revolt.toml
+  configurator:
+    image: alpine:latest
+    volumes:
+      - ./generate_revolt_toml.sh:/scripts/generate_revolt_toml.sh:ro
+      - revolt_config:/config
+    environment:
+      - RAILWAY_PUBLIC_DOMAIN=${RAILWAY_PUBLIC_DOMAIN:-localhost}
+      - VAPID_PRIVATE_KEY=${VAPID_PRIVATE_KEY}
+      - VAPID_PUBLIC_KEY=${VAPID_PUBLIC_KEY}
+      - FILES_ENCRYPTION_KEY=${FILES_ENCRYPTION_KEY}
+      - RABBIT_USER=${RABBIT_USER:-rabbituser}
+      - RABBIT_PASS=${RABBIT_PASS:-rabbitpass}
+      - MINIO_USER=${MINIO_USER:-minioautumn}
+      - MINIO_PASS=${MINIO_PASS:-minioautumn}
+    user: root
+    entrypoint: >
+      /bin/sh -c "
+      apk add --no-progress openssl;
+      /bin/sh /scripts/generate_revolt_toml.sh;
+      "
+
   # MongoDB: Database
   database:
     image: docker.io/mongo
@@ -83,20 +103,17 @@ services:
         condition: service_started
       rabbit:
         condition: service_healthy
+      configurator:
+        condition: service_completed_successfully
     environment:
       - REVOLT_DATABASE_MONGODB=mongodb://database
       - REVOLT_DATABASE_REDIS=redis://redis/
       - REVOLT_RABBIT_HOST=rabbit
       - REVOLT_RABBIT_USERNAME=${RABBIT_USER:-rabbituser}
       - REVOLT_RABBIT_PASSWORD=${RABBIT_PASS:-rabbitpass}
-      - REVOLT_HOSTS_APP=https://${RAILWAY_PUBLIC_DOMAIN:-localhost}
-      - REVOLT_HOSTS_API=https://${RAILWAY_PUBLIC_DOMAIN:-localhost}/api
-      - REVOLT_HOSTS_EVENTS=wss://${RAILWAY_PUBLIC_DOMAIN:-localhost}/ws
-      - REVOLT_HOSTS_AUTUMN=https://${RAILWAY_PUBLIC_DOMAIN:-localhost}/autumn
-      - REVOLT_HOSTS_JANUARY=https://${RAILWAY_PUBLIC_DOMAIN:-localhost}/january
-      - REVOLT_FILES_ENCRYPTION_KEY=${FILES_ENCRYPTION_KEY:-qcuMA+ssxhMyKaNAKBGFfryfFtUH8NDlamQyDwGW6fU=}
     volumes:
-      - ./Revolt.toml:/Revolt.toml
+      - revolt_config:/etc/revolt
+    command: ["--config", "/etc/revolt/Revolt.toml"]
     restart: always
 
   # Events service
@@ -107,16 +124,14 @@ services:
         condition: service_healthy
       redis:
         condition: service_started
+      configurator:
+        condition: service_completed_successfully
     environment:
       - REVOLT_DATABASE_MONGODB=mongodb://database
       - REVOLT_DATABASE_REDIS=redis://redis/
-      - REVOLT_HOSTS_APP=https://${RAILWAY_PUBLIC_DOMAIN:-localhost}
-      - REVOLT_HOSTS_API=https://${RAILWAY_PUBLIC_DOMAIN:-localhost}/api
-      - REVOLT_HOSTS_EVENTS=wss://${RAILWAY_PUBLIC_DOMAIN:-localhost}/ws
-      - REVOLT_HOSTS_AUTUMN=https://${RAILWAY_PUBLIC_DOMAIN:-localhost}/autumn
-      - REVOLT_HOSTS_JANUARY=https://${RAILWAY_PUBLIC_DOMAIN:-localhost}/january
     volumes:
-      - ./Revolt.toml:/Revolt.toml
+      - revolt_config:/etc/revolt
+    command: ["--config", "/etc/revolt/Revolt.toml"]
     restart: always
 
   # Web App
@@ -137,44 +152,38 @@ services:
         condition: service_healthy
       createbuckets:
         condition: service_started
+      configurator:
+        condition: service_completed_successfully
     environment:
       - REVOLT_DATABASE_MONGODB=mongodb://database
       - REVOLT_FILES_S3_ENDPOINT=http://minio:9000
       - REVOLT_FILES_S3_ACCESS_KEY_ID=${MINIO_USER:-minioautumn}
       - REVOLT_FILES_S3_SECRET_ACCESS_KEY=${MINIO_PASS:-minioautumn}
-      - REVOLT_HOSTS_APP=https://${RAILWAY_PUBLIC_DOMAIN:-localhost}
-      - REVOLT_HOSTS_API=https://${RAILWAY_PUBLIC_DOMAIN:-localhost}/api
-      - REVOLT_HOSTS_EVENTS=wss://${RAILWAY_PUBLIC_DOMAIN:-localhost}/ws
-      - REVOLT_HOSTS_AUTUMN=https://${RAILWAY_PUBLIC_DOMAIN:-localhost}/autumn
-      - REVOLT_HOSTS_JANUARY=https://${RAILWAY_PUBLIC_DOMAIN:-localhost}/january
     volumes:
-      - ./Revolt.toml:/Revolt.toml
+      - revolt_config:/etc/revolt
+    command: ["--config", "/etc/revolt/Revolt.toml"]
     restart: always
 
   # Metadata and image proxy
   january:
     image: ghcr.io/revoltchat/january:20250930-2
-    environment:
-      - REVOLT_HOSTS_APP=https://${RAILWAY_PUBLIC_DOMAIN:-localhost}
-      - REVOLT_HOSTS_API=https://${RAILWAY_PUBLIC_DOMAIN:-localhost}/api
-      - REVOLT_HOSTS_EVENTS=wss://${RAILWAY_PUBLIC_DOMAIN:-localhost}/ws
-      - REVOLT_HOSTS_AUTUMN=https://${RAILWAY_PUBLIC_DOMAIN:-localhost}/autumn
-      - REVOLT_HOSTS_JANUARY=https://${RAILWAY_PUBLIC_DOMAIN:-localhost}/january
+    depends_on:
+      configurator:
+        condition: service_completed_successfully
     volumes:
-      - ./Revolt.toml:/Revolt.toml
+      - revolt_config:/etc/revolt
+    command: ["--config", "/etc/revolt/Revolt.toml"]
     restart: always
 
   # Tenor proxy
   gifbox:
     image: ghcr.io/revoltchat/gifbox:20250930-2
-    environment:
-      - REVOLT_HOSTS_APP=https://${RAILWAY_PUBLIC_DOMAIN:-localhost}
-      - REVOLT_HOSTS_API=https://${RAILWAY_PUBLIC_DOMAIN:-localhost}/api
-      - REVOLT_HOSTS_EVENTS=wss://${RAILWAY_PUBLIC_DOMAIN:-localhost}/ws
-      - REVOLT_HOSTS_AUTUMN=https://${RAILWAY_PUBLIC_DOMAIN:-localhost}/autumn
-      - REVOLT_HOSTS_JANUARY=https://${RAILWAY_PUBLIC_DOMAIN:-localhost}/january
+    depends_on:
+      configurator:
+        condition: service_completed_successfully
     volumes:
-      - ./Revolt.toml:/Revolt.toml
+      - revolt_config:/etc/revolt
+    command: ["--config", "/etc/revolt/Revolt.toml"]
     restart: always
 
   # Regular task daemon
@@ -185,13 +194,16 @@ services:
         condition: service_healthy
       minio:
         condition: service_started
+      configurator:
+        condition: service_completed_successfully
     environment:
       - REVOLT_DATABASE_MONGODB=mongodb://database
       - REVOLT_FILES_S3_ENDPOINT=http://minio:9000
       - REVOLT_FILES_S3_ACCESS_KEY_ID=${MINIO_USER:-minioautumn}
       - REVOLT_FILES_S3_SECRET_ACCESS_KEY=${MINIO_PASS:-minioautumn}
     volumes:
-      - ./Revolt.toml:/Revolt.toml
+      - revolt_config:/etc/revolt
+    command: ["--config", "/etc/revolt/Revolt.toml"]
     restart: always
 
   # Push notification daemon
@@ -204,16 +216,17 @@ services:
         condition: service_started
       rabbit:
         condition: service_healthy
+      configurator:
+        condition: service_completed_successfully
     environment:
       - REVOLT_DATABASE_MONGODB=mongodb://database
       - REVOLT_DATABASE_REDIS=redis://redis/
       - REVOLT_RABBIT_HOST=rabbit
       - REVOLT_RABBIT_USERNAME=${RABBIT_USER:-rabbituser}
       - REVOLT_RABBIT_PASSWORD=${RABBIT_PASS:-rabbitpass}
-      - REVOLT_PUSHD_VAPID_PRIVATE_KEY=${VAPID_PRIVATE_KEY:-LS0tLS1CRUdJTiBFQyBQUklWQVRFIEtFWS0tLS0tCk1IY0NBUUVFSUJSUWpyTWxLRnBiVWhsUHpUbERvcEliYk1yeVNrNXpKYzVYVzIxSjJDS3hvQW9HQ0NxR1NNNDkKQXdFSG9VUURRZ0FFWnkrQkg2TGJQZ2hEa3pEempXOG0rUXVPM3pCajRXT1phdkR6ZU00c0pqbmFwd1psTFE0WAp1ZDh2TzVodU94QWhMQlU3WWRldVovWHlBdFpWZmNyQi9BPT0KLS0tLS1FTkQgRUMgUFJJVkFURSBLRVktLS0tLQo=}
-      - REVOLT_PUSHD_VAPID_PUBLIC_KEY=${VAPID_PUBLIC_KEY:-BGcvgR-i2z4IQ5Mw841vJvkLjt8wY-FjmWrw83jOLCY52qcGZS0OF7nfLzuYbjsQISwVO2HXrmf18gLWVX3Kwfw=}
     volumes:
-      - ./Revolt.toml:/Revolt.toml
+      - revolt_config:/etc/revolt
+    command: ["--config", "/etc/revolt/Revolt.toml"]
     restart: always
 
   # Create buckets for minio.
@@ -232,6 +245,7 @@ services:
       "
 
 volumes:
+  revolt_config:
   mongodb_data:
   redis_data:
   rabbit_data:
