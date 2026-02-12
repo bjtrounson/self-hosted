@@ -1,13 +1,13 @@
 # Stage 1: Get binaries from official images
-FROM ghcr.io/revoltchat/server:20250930-2 as server
-FROM ghcr.io/revoltchat/bonfire:20250930-2 as bonfire
-FROM ghcr.io/revoltchat/autumn:20250930-2 as autumn
-FROM ghcr.io/revoltchat/january:20250930-2 as january
-FROM ghcr.io/revoltchat/gifbox:20250930-2 as gifbox
-FROM ghcr.io/revoltchat/crond:20250930-2 as crond
-FROM ghcr.io/revoltchat/pushd:20250930-2 as pushd
-FROM ghcr.io/revoltchat/client:master as client
-FROM minio/mc:latest as mc
+FROM ghcr.io/revoltchat/server:20250930-2 AS server
+FROM ghcr.io/revoltchat/bonfire:20250930-2 AS bonfire
+FROM ghcr.io/revoltchat/autumn:20250930-2 AS autumn
+FROM ghcr.io/revoltchat/january:20250930-2 AS january
+FROM ghcr.io/revoltchat/gifbox:20250930-2 AS gifbox
+FROM ghcr.io/revoltchat/crond:20250930-2 AS crond
+FROM ghcr.io/revoltchat/pushd:20250930-2 AS pushd
+FROM ghcr.io/revoltchat/client:master AS client
+FROM minio/mc:latest AS mc
 
 # Stage 2: Final consolidated image
 FROM alpine:latest
@@ -23,13 +23,13 @@ RUN apk add --no-cache \
     bash
 
 # Copy binaries from stages
-COPY --from=server /revolt-delta /usr/bin/revolt-delta
-COPY --from=bonfire /revolt-bonfire /usr/bin/revolt-bonfire
-COPY --from=autumn /revolt-autumn /usr/bin/revolt-autumn
-COPY --from=january /revolt-january /usr/bin/revolt-january
-COPY --from=gifbox /revolt-gifbox /usr/bin/revolt-gifbox
-COPY --from=crond /revolt-crond /usr/bin/revolt-crond
-COPY --from=pushd /revolt-pushd /usr/bin/revolt-pushd
+COPY --from=server /home/nonroot/revolt-delta /usr/bin/revolt-delta
+COPY --from=bonfire /home/nonroot/revolt-bonfire /usr/bin/revolt-bonfire
+COPY --from=autumn /home/nonroot/revolt-autumn /usr/bin/revolt-autumn
+COPY --from=january /home/nonroot/revolt-january /usr/bin/revolt-january
+COPY --from=gifbox /home/nonroot/revolt-gifbox /usr/bin/revolt-gifbox
+COPY --from=crond /home/nonroot/revolt-crond /usr/bin/revolt-crond
+COPY --from=pushd /home/nonroot/revolt-pushd /usr/bin/revolt-pushd
 COPY --from=mc /usr/bin/mc /usr/bin/mc
 
 # Copy web client files
