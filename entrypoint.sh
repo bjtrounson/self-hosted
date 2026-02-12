@@ -238,14 +238,15 @@ fi
 
 # 2. Export environment variables and generate .env files
 export REVOLT_PUBLIC_URL="$PROTO://$DOMAIN/api"
-export HOSTNAME="$PROTO://$DOMAIN"
+export HOSTNAME="$DOMAIN"
 
-echo "Generating .env files..."
+echo "Generating .env.web and .env files..."
 # Generate .env.web in the data volume for persistence/reference
 echo "HOSTNAME=$HOSTNAME" > /data/.env.web
 echo "REVOLT_PUBLIC_URL=$REVOLT_PUBLIC_URL" >> /data/.env.web
 
-# Ensure the web client sees the environment variables
+# Ensure the web client sees the environment variables in both expected files
+cp /data/.env.web /www/client/.env.web
 cp /data/.env.web /www/client/.env
 
 # 3. Generate Caddyfile
