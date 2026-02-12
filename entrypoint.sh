@@ -116,14 +116,15 @@ cat <<EOF > /etc/caddy/Caddyfile
 }
 EOF
 
-# 3. Create MinIO Buckets
-echo "Waiting for MinIO..."
+# 3. Create MinIO Buckets (in background)
+echo "Waiting for MinIO (minio:9000)..."
 (
     while ! mc alias set minio http://minio:9000 "${MINIO_USER:-minioautumn}" "${MINIO_PASS:-minioautumn}" > /dev/null 2>&1; do
         sleep 2
     done
-    echo "Creating revolt-uploads bucket..."
+    echo "Connected to MinIO. Creating revolt-uploads bucket..."
     mc mb minio/revolt-uploads || true
+    echo "Buckets initialized."
 ) &
 
 # 4. Start Supervisord

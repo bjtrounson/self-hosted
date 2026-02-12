@@ -23,20 +23,20 @@ RUN apk add --no-cache \
     bash
 
 # Copy binaries from stages
-COPY --from=server /revolt-server /usr/bin/revolt-server
-COPY --from=bonfire /bonfire /usr/bin/bonfire
-COPY --from=autumn /autumn /usr/bin/autumn
-COPY --from=january /january /usr/bin/january
-COPY --from=gifbox /gifbox /usr/bin/gifbox
+COPY --from=server /revolt-delta /usr/bin/revolt-delta
+COPY --from=bonfire /revolt-bonfire /usr/bin/revolt-bonfire
+COPY --from=autumn /revolt-autumn /usr/bin/revolt-autumn
+COPY --from=january /revolt-january /usr/bin/revolt-january
+COPY --from=gifbox /revolt-gifbox /usr/bin/revolt-gifbox
 COPY --from=crond /revolt-crond /usr/bin/revolt-crond
 COPY --from=pushd /revolt-pushd /usr/bin/revolt-pushd
 COPY --from=mc /usr/bin/mc /usr/bin/mc
 
 # Copy web client files
-COPY --from=client /usr/share/nginx/html /www/client
+COPY --from=client /usr/src/app/dist /www/client
 
 # Create data directory for shared volume
-RUN mkdir -p /data /etc/revolt /scripts
+RUN mkdir -p /data /etc/revolt /scripts /www/client
 
 # Copy configuration and entrypoint
 COPY supervisord.conf /etc/supervisor/conf.d/revolt.conf
