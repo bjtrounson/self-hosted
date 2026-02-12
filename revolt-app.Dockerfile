@@ -1,4 +1,4 @@
-# Stage 1: Get binaries from official images
+# Stage 1: Get binaries and assets from official images
 FROM ghcr.io/revoltchat/server:20250930-2 AS server
 FROM ghcr.io/revoltchat/bonfire:20250930-2 AS bonfire
 FROM ghcr.io/revoltchat/autumn:20250930-2 AS autumn
@@ -10,7 +10,7 @@ FROM ghcr.io/revoltchat/client:master AS client
 FROM minio/mc:latest AS mc
 
 # Stage 2: Final consolidated image
-FROM debian:12-slim
+FROM node:22-bookworm-slim
 
 # Install runtime dependencies
 RUN apt-get update && apt-get install -y --no-install-recommends \
@@ -35,11 +35,12 @@ COPY --from=crond /home/nonroot/revolt-crond /usr/bin/revolt-crond
 COPY --from=pushd /home/nonroot/revolt-pushd /usr/bin/revolt-pushd
 COPY --from=mc /usr/bin/mc /usr/bin/mc
 
-# Copy web client files
-COPY --from=client /usr/src/app/dist /www/client
+# Copy web client source and build artifacts
+# We copy the whole /usr/src/app to ensure we have node_modules and inject scripts
+COPY --from=client /usr/src/app /www/client
 
 # Create data directory for shared volume
-RUN mkdir -p /data /etc/revolt /scripts /www/client /etc/caddy
+RUN mkdir -p /data /etc/revolt /scripts /etc/caddy
 
 # Copy configuration and entrypoint
 COPY supervisord.conf /etc/supervisor/conf.d/revolt.conf

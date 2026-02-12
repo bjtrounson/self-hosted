@@ -234,7 +234,16 @@ EOF
     echo "Revolt.toml generated successfully."
 fi
 
-# 2. Generate Caddyfile
+# 2. Export environment variables for the Web Client injection
+DOMAIN=${RAILWAY_PUBLIC_DOMAIN:-localhost}
+PROTO="https"
+if [ "$DOMAIN" = "localhost" ]; then PROTO="http"; fi
+
+export REVOLT_PUBLIC_URL="$PROTO://$DOMAIN/api"
+# Other optional variables for client injection:
+# export REVOLT_VAPID_PUBLIC_KEY="$VAPID_PUB"
+
+# 3. Generate Caddyfile
 echo "Configuring Caddy..."
 cat <<EOF > /etc/caddy/Caddyfile
 :{\$PORT} {
@@ -273,15 +282,11 @@ cat <<EOF > /etc/caddy/Caddyfile
         }
     }
 
-    handle {
-        root * /www/client
-        file_server
-        try_files {path} /index.html
-    }
+    reverse_proxy localhost:5000
 }
 EOF
 
-# 3. Create MinIO Buckets (in background)
+# 4. Create MinIO Buckets (in background)
 echo "Waiting for MinIO (minio:9000)..."
 (
     while ! mc alias set minio http://minio:9000 "${MINIO_USER:-minioautumn}" "${MINIO_PASS:-minioautumn}" > /dev/null 2>&1; do
@@ -292,6 +297,6 @@ echo "Waiting for MinIO (minio:9000)..."
     echo "Buckets initialized."
 ) &
 
-# 4. Start Supervisord
+# 5. Start Supervisord
 echo "Handing over to Supervisor..."
 exec /usr/bin/supervisord -c /etc/supervisor/conf.d/revolt.conf
