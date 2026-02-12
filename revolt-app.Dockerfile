@@ -10,17 +10,20 @@ FROM ghcr.io/revoltchat/client:master AS client
 FROM minio/mc:latest AS mc
 
 # Stage 2: Final consolidated image
-FROM alpine:latest
+FROM debian:12-slim
 
 # Install runtime dependencies
-RUN apk add --no-cache \
-    caddy \
+RUN apt-get update && apt-get install -y --no-install-recommends \
     supervisor \
     openssl \
     ca-certificates \
     curl \
-    libc6-compat \
-    bash
+    bash \
+    procps \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install Caddy manually
+RUN curl -fsSL "https://github.com/caddyserver/caddy/releases/download/v2.7.6/caddy_2.7.6_linux_amd64.tar.gz" | tar -xz -C /usr/bin caddy
 
 # Copy binaries from stages
 COPY --from=server /home/nonroot/revolt-delta /usr/bin/revolt-delta
@@ -36,7 +39,7 @@ COPY --from=mc /usr/bin/mc /usr/bin/mc
 COPY --from=client /usr/src/app/dist /www/client
 
 # Create data directory for shared volume
-RUN mkdir -p /data /etc/revolt /scripts /www/client
+RUN mkdir -p /data /etc/revolt /scripts /www/client /etc/caddy
 
 # Copy configuration and entrypoint
 COPY supervisord.conf /etc/supervisor/conf.d/revolt.conf
