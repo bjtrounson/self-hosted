@@ -6,12 +6,14 @@ echo "Starting Revolt Mono-App Entrypoint..."
 # Path to the shared configuration
 CONFIG_FILE="/data/Revolt.toml"
 
+# Allow custom domain override
+DOMAIN=${CUSTOM_DOMAIN:-${RAILWAY_PUBLIC_DOMAIN:-localhost}}
+PROTO="https"
+if [ "$DOMAIN" = "localhost" ]; then PROTO="http"; fi
+
 # 1. Generate Revolt.toml if it doesn't exist
 if [ ! -f "$CONFIG_FILE" ]; then
     echo "No configuration found. Generating Revolt.toml..."
-    DOMAIN=${RAILWAY_PUBLIC_DOMAIN:-localhost}
-    PROTO="https"
-    if [ "$DOMAIN" = "localhost" ]; then PROTO="http"; fi
     
     # Handle VAPID keys
     VAPID_PRIV=${VAPID_PRIVATE_KEY}
@@ -234,14 +236,17 @@ EOF
     echo "Revolt.toml generated successfully."
 fi
 
-# 2. Export environment variables for the Web Client injection
-DOMAIN=${RAILWAY_PUBLIC_DOMAIN:-localhost}
-PROTO="https"
-if [ "$DOMAIN" = "localhost" ]; then PROTO="http"; fi
-
+# 2. Export environment variables and generate .env files
 export REVOLT_PUBLIC_URL="$PROTO://$DOMAIN/api"
-# Other optional variables for client injection:
-# export REVOLT_VAPID_PUBLIC_KEY="$VAPID_PUB"
+export HOSTNAME="$PROTO://$DOMAIN"
+
+echo "Generating .env files..."
+# Generate .env.web in the data volume for persistence/reference
+echo "HOSTNAME=$HOSTNAME" > /data/.env.web
+echo "REVOLT_PUBLIC_URL=$REVOLT_PUBLIC_URL" >> /data/.env.web
+
+# Ensure the web client sees the environment variables
+cp /data/.env.web /www/client/.env
 
 # 3. Generate Caddyfile
 echo "Configuring Caddy..."
