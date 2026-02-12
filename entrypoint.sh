@@ -249,40 +249,40 @@ cat <<EOF > /etc/caddy/Caddyfile
 :{\$PORT} {
     route /api* {
         uri strip_prefix /api
-        reverse_proxy localhost:14702 {
+        reverse_proxy 127.0.0.1:14702 {
             header_down Location "^/" "/api/"
         }
     }
 
     route /ws {
         uri strip_prefix /ws
-        reverse_proxy localhost:14703 {
+        reverse_proxy 127.0.0.1:14703 {
             header_down Location "^/" "/ws/"
         }
     }
 
     route /autumn* {
         uri strip_prefix /autumn
-        reverse_proxy localhost:14704 {
+        reverse_proxy 127.0.0.1:14704 {
             header_down Location "^/" "/autumn/"
         }
     }
 
     route /january* {
         uri strip_prefix /january
-        reverse_proxy localhost:14705 {
+        reverse_proxy 127.0.0.1:14705 {
             header_down Location "^/" "/january/"
         }
     }
 
     route /gifbox* {
         uri strip_prefix /gifbox
-        reverse_proxy localhost:14706 {
+        reverse_proxy 127.0.0.1:14706 {
             header_down Location "^/" "/gifbox/"
         }
     }
 
-    reverse_proxy localhost:5000
+    reverse_proxy 127.0.0.1:5000
 }
 EOF
 
